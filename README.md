@@ -1,21 +1,78 @@
 # QtTune
 
+> ⚠️ **WARNING:** This software may permanently damage your vehicle.  
+> See [DISCLAIMER.md](DISCLAIMER.md) for full terms before use.
+
 Cross-platform ECU reader/logger, evolving into a full tuning application.
 Qt/QML frontend (desktop + mobile) over a Qt-free C ABI core library.
 
-## Build (desktop)
+## Requirements
 
-    cmake -B build
+### Minimum for Desktop Build
+
+| Component | Version | Notes |
+|-----------|---------|-------|
+| **CMake** | 3.21+ | Required for `qt_standard_project_setup()` |
+| **Qt** | 6.8+ (LGPL) | Core, Gui, Quick modules |
+| **C++ Compiler** | C++17 | MSVC 19.x (2019+), GCC 11+, Clang 14+ |
+
+### Runtime
+
+- **Windows:** VC++ 2019 Redistributable (auto-installed by MSVC workload)
+- **Linux/macOS:** Qt runtime libraries (provided by package manager or Qt installer)
+
+### Development (Optional)
+
+- **Python 3.13+** (64-bit) — for future trace analysis tooling
+- **J2534 driver** — optional, only needed for live vehicle testing in v0.3+
+
+Mobile builds additionally require Qt Creator with Android/iOS kits configured.
+
+## Build (Desktop)
+
+    # Windows (adjust path to your Qt installation)
+    cmake -B build -DCMAKE_PREFIX_PATH=C:/Qt/6.8.2/msvc2022_64
+    cmake --build build --config Release
+
+    # Linux/macOS: use the Qt path from your package manager or Qt installer
+    cmake -B build -DCMAKE_PREFIX_PATH=/path/to/qt
     cmake --build build
-    ./build/app/qttune
 
-Requires Qt 6.5+ (install via `aqtinstall`, Qt online installer, or your
-package manager).
+Run `build/app/Release/qttune.exe` on Windows (VS generator) or
+`build/app/qttune` with single-config generators like Ninja.
 
-## Mobile
+## Build (Mobile)
 
-Open the repo in Qt Creator, select the Android or iOS kit, and build.
-The QML, bridge, and core are shared; only the kit differs.
+Open in Qt Creator → select Android or iOS kit → Run. The QML, bridge,
+and core are shared; only the kit differs.
+
+## Roadmap
+
+| Phase | Goals | Status |
+|-------|-------|--------|
+| v0.1.0 (now) | Skeleton: core ABI, Qt shell, responsive layout | Ready |
+| v0.2.0 | Mock transport, unit tests, log parser | Planned |
+| v0.3.0 | J2534 transport, live vehicle read/logging | Future |
+| v0.4.0 | Security access discovery, flash capability | Future |
+| v0.5.0+ | Multi-manufacturer plugins | Future |
+
+Flash capabilities require discovering each manufacturer's secure
+gateway authentication. Vehicle communication research is tracked
+separately and outside this repo for now.
 
 ⚠️ Early skeleton. No vehicle communication yet. Do not connect to a
-vehicle expecting functionality. See DISCLAIMER.md before any future use.
+vehicle expecting functionality.
+
+## Plugins
+
+Reserved for manufacturer modules implementing
+protocol/security layers.
+
+## Dependencies
+
+This application uses [Qt](https://www.qt.io), licensed under LGPL-3.0.
+Qt is not bundled in this repository; see qt.io for sources and license text.
+
+## License
+
+MIT — see [LICENSE](LICENSE) file.
