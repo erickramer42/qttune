@@ -56,6 +56,5 @@ jobs:
 
       - name: Build full app
         run: |
-          cmake -B build -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake -B build -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR" -DCMAKE_EXE_LINKER_FLAGS="-Wl,-weak_framework,AGL"
           cmake --build build
-          
