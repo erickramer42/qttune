@@ -4,7 +4,9 @@
 > See [DISCLAIMER.md](DISCLAIMER.md) for full terms before use.
 
 Cross-platform ECU reader/logger, evolving into a full tuning application.
-Qt/QML frontend (desktop + mobile) over a Qt-free C ABI core library.
+Qt/QML frontend with a shared codebase targeting desktop (Windows, Linux,
+macOS) and mobile (Android, iOS); desktop builds are validated, mobile
+kits are pending first on-device build.
 
 ## Requirements
 
@@ -41,20 +43,23 @@ Mobile builds additionally require Qt Creator with Android/iOS kits configured.
 Run `build/app/Release/qttune.exe` on Windows (VS generator) or
 `build/app/qttune` with single-config generators like Ninja.
 
-## Build (Mobile)
+## Build (Mobile) — unvalidated
 
-Open in Qt Creator → select Android or iOS kit → Run. The QML, bridge,
-and core are shared; only the kit differs.
+Intended path: open in Qt Creator → select Android or iOS kit → Run. The
+QML, bridge, and core are shared; only the kit differs. Not yet verified
+on a device/emulator.
 
 ## Roadmap
 
 | Phase | Goals | Status |
 |-------|-------|--------|
-| v0.1.0 (now) | Skeleton: core ABI, Qt shell, responsive layout | Ready |
-| v0.2.0 | Mock transport, unit tests, log parser | Planned |
+| v0.1.0 | Skeleton: core ABI, Qt shell, responsive layout | ✅ Released |
+| v0.2.0 | Callback API, mock transport, CI + tests | 🚧 In Progress |
 | v0.3.0 | J2534 transport, live vehicle read/logging | Future |
 | v0.4.0 | Security access discovery, flash capability | Future |
 | v0.5.0+ | Multi-manufacturer plugins | Future |
+
+[![CI](https://github.com/erickramer42/qttune/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/qttune/actions/workflows/ci.yml)
 
 Flash capabilities require discovering each manufacturer's secure
 gateway authentication. Vehicle communication research is tracked
