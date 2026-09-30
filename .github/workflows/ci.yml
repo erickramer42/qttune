@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  core-and-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build core + tests (no Qt present)
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DQTTUNE_BUILD_CORE_ONLY=ON
+          cmake --build build
+
+      - name: Run tests
+        run: |
+          ctest --test-dir build -C Release --output-on-failure
+
+  full-build:
+    runs-on: windows-latest
+    needs: core-and-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Qt 6.8.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2022_64'
+
+      - name: Build full app
+        run: |
+          cmake -B build -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+          cmake --build build --config Release
+
+  macos-build:
+    runs-on: macos-latest
+    needs: core-and-tests
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Qt 6.8.2
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.2'
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+
+      - name: Build full app
+        run: |
+          cmake -B build -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake --build build
+          

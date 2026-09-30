@@ -17,5 +17,15 @@ configure_file(
     @ONLY
 )
 
+option(QTTUNE_BUILD_CORE_ONLY "Build core library and tests; skip Qt app" OFF)
+
 add_subdirectory(core)
-add_subdirectory(app)
+
+include(CTest)
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
+
+if(NOT QTTUNE_BUILD_CORE_ONLY)
+    add_subdirectory(app)
+endif()
