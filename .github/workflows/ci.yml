@@ -27,18 +27,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Qt 6.12.0
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '6.12.0'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win64_msvc2022_64'
-          aqtversion: 'git+https://github.com/miurahr/aqtinstall@master'
+      - name: Install aqtinstall (master, repo-layout fix for Qt 6.11+)
+        run: python -m pip install --force-reinstall git+https://github.com/miurahr/aqtinstall
+
+      - name: Install Qt 6.12.0
+        run: |
+          python -m aqt install-qt windows desktop 6.12.0 win64_msvc2022_64 --outputdir "${env:GITHUB_WORKSPACE}\Qt"
+          "QT_PREFIX=${env:GITHUB_WORKSPACE}\Qt\6.12.0\msvc2022_64" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Build full app
         run: |
-          cmake -B build -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+          cmake -B build -DCMAKE_PREFIX_PATH="$env:QT_PREFIX"
           cmake --build build --config Release
 
   macos-build:
