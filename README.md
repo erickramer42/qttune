@@ -15,7 +15,7 @@ kits are pending first on-device build.
 | Component | Version | Notes |
 |-----------|---------|-------|
 | **CMake** | 3.21+ | Required for `qt_standard_project_setup()` |
-| **Qt** | 6.8+ (LGPL) | Core, Gui, Quick modules |
+| **Qt** | 6.12+ (LGPL) | Core, Gui, Quick modules |
 | **C++ Compiler** | C++17 | MSVC 19.x (2019+), GCC 11+, Clang 14+ |
 
 ### Runtime
@@ -33,7 +33,7 @@ Mobile builds additionally require Qt Creator with Android/iOS kits configured.
 ## Build (Desktop)
 
     # Windows (adjust path to your Qt installation)
-    cmake -B build -DCMAKE_PREFIX_PATH=C:/Qt/6.8.2/msvc2022_64
+    cmake -B build -DCMAKE_PREFIX_PATH=C:/Qt/6.12.0/msvc2022_64
     cmake --build build --config Release
 
     # Linux/macOS: use the Qt path from your package manager or Qt installer

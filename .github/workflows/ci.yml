@@ -34,6 +34,7 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2022_64'
+          aqtversion: 'git+https://github.com/miurahr/aqtinstall'
 
       - name: Build full app
         run: |
