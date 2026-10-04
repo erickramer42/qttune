@@ -65,8 +65,6 @@ Flash capabilities require discovering each manufacturer's secure
 gateway authentication. Vehicle communication research is tracked
 separately and outside this repo for now.
 
-⚠️ Early skeleton. No vehicle communication yet. Do not connect to a
-vehicle expecting functionality.
 
 ## Plugins
 
@@ -82,6 +80,6 @@ Qt is not bundled in this repository; see qt.io for sources and license text.
 
 MIT — see [LICENSE](LICENSE) file.
 
-⚠️ Early infrastructure. Core callback API is implemented and unit-tested;
-the mock transport that feeds it live data is in progress. No vehicle
-communication yet. Do not connect to a vehicle expecting functionality.
+⚠️ Early infrastructure. Core callback API + mock transport implemented
+and unit-tested (15 tests passing). No real vehicle communication yet.
+Do not connect to a vehicle expecting functionality.

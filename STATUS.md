@@ -66,21 +66,17 @@ handles (avoids the dangling-handle crash class):
 | Capability | Verified by |
 |---|---|
 | Core builds standalone with zero Qt deps | `core-and-tests` CI job (Ubuntu, Qt absent) |
-| 12 unit tests pass: status strings, version format, init/shutdown idempotency, session arg validation, callback register/unregister, duplicate dedup, distinct-userdata registration, dispatch invocation, null-pointer paths | GTest suite; locally on Windows/MSVC 2022, pending this commit's CI run |
+| 15 unit tests pass: status strings, version format, init/shutdown idempotency, session arg validation, callback register/unregister, duplicate dedup, distinct-userdata registration, dispatch invocation, null-pointer paths, mock transport delivery, unknown-uri rejection | GTest suite; locally verified 15/15 on Windows/MSVC 2022 |
+| Mock transport delivers frames from background thread | Integration test (`MockTransportDeliversFrames`) verifies callbacks fire on worker thread, session_close joins worker without hang |
 | Session-scoped frame callback API with snapshot dispatch | Unit tests (dispatch invocation + dedup verified at dispatch time); real second-thread exercise arrives with mock transport |
 | Full app builds on Windows (MSVC 2022, Qt 6.12.0) | `full-build` CI job |
 | Full app builds on macOS (AppleClang, Xcode 26 SDK, Qt 6.12.0) | `macos-build` CI job |
 | Responsive QML layout (desktop sidebar ↔ mobile TabBar breakpoint) | Local run, Windows |
 | Version string surfaces in UI (`QtTune — core 0.1.0 [ready]`) | Local run |
 
-Note on the test count jump (4 → 12): ctest reports the GTest suite as a
-single aggregate, so per-case visibility comes from running the test
-binary directly (`--gtest_list_tests`). Candidate CI hardening: a
-suite-non-empty check so a silently-skipped suite fails loudly.
-
 ## In Progress (v0.2.0)
 
-- [ ] **Mock transport** — `mock://` URI scheme, timer-driven synthetic
+- [x] **Mock transport** — `mock://` URI scheme, timer-driven synthetic
       frame generation on a `std::thread` worker in core; dispatches via
       the snapshot path; close must stop-and-join before session
       destruction (quiesce discipline)
@@ -98,7 +94,7 @@ Done in v0.2.0 so far:
 - [x] `QTTUNE_BUILD_CORE_ONLY` CMake option enabling headless builds
 - [x] Qt upgraded to 6.12.0 LTS across all platforms
 - [x] Session-scoped callback API + internal dispatch hook +
-      8 new unit tests
+      11 new unit tests (including mock transport integration)
 
 ## Known Issues / Technical Debt
 
