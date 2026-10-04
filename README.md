@@ -54,7 +54,7 @@ on a device/emulator.
 | Phase | Goals | Status |
 |-------|-------|--------|
 | v0.1.0 | Skeleton: core ABI, Qt shell, responsive layout | ✅ Released |
-| v0.2.0 | Callback API, mock transport, CI + tests | 🚧 In Progress |
+| v0.2.0 | Callback API (done), mock transport, bridge marshaling | 🚧 In Progress |
 | v0.3.0 | J2534 transport, live vehicle read/logging | Future |
 | v0.4.0 | Security access discovery, flash capability | Future |
 | v0.5.0+ | Multi-manufacturer plugins | Future |
@@ -81,3 +81,7 @@ Qt is not bundled in this repository; see qt.io for sources and license text.
 ## License
 
 MIT — see [LICENSE](LICENSE) file.
+
+⚠️ Early infrastructure. Core callback API is implemented and unit-tested;
+the mock transport that feeds it live data is in progress. No vehicle
+communication yet. Do not connect to a vehicle expecting functionality.

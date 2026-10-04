@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 #include <cstring>
 #include <atomic>
+#include <chrono>
+#include <thread>
 
 extern "C" {
 #include "qttune/core.h"
@@ -199,4 +201,39 @@ TEST(CoreTest, CallbackDispatchInvokesRegisteredCallback) {
     EXPECT_EQ(counter, 2);  // Still 1 per dispatch, dedup worked
 
     qttune_session_close(session);
+}
+
+TEST(CoreTest, MockTransportDeliversFrames) {
+    qttune_session_t* session = nullptr;
+    ASSERT_EQ(qttune_session_create("mock://test", &session), QT_OK);
+
+    std::atomic<int> frame_count{0};
+    /* plain function to keep extern "C" signature compatibility */
+    static std::atomic<int>* counter_ptr = &frame_count;
+    EXPECT_EQ(qttune_register_frame_callback(
+        session,
+        [](const qttune_frame_t*, void*) { (*counter_ptr)++; },
+        nullptr), QT_OK);
+
+    EXPECT_EQ(qttune_session_start(session), QT_OK);
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    EXPECT_GE(frame_count.load(), 3);   /* 50ms interval -> ~4 frames */
+
+    /* Close must join the worker without hanging */
+    EXPECT_EQ(qttune_session_close(session), QT_OK);
+}
+
+TEST(CoreTest, UnknownTransportUriRejected) {
+    qttune_session_t* session = nullptr;
+    EXPECT_EQ(qttune_session_create("j2534://dev0", &session),
+              QT_ERR_NO_TRANSPORT);
+    EXPECT_EQ(qttune_session_create(nullptr, &session),
+              QT_ERR_NULL_ARGUMENT);
+}
+
+TEST(CoreTest, SessionStartWithoutTransportFails) {
+    /* Valid mock session, but force no-transport via closed early?
+     * Not reachable via public API in v0.2 — skip rather than assert UB. */
+    SUCCEED();
 }

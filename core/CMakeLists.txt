@@ -1,5 +1,6 @@
 add_library(qttune-core STATIC
     src/core.cpp
+    src/mock_transport.cpp
 )
 
 target_include_directories(qttune-core

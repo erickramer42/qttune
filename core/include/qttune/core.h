@@ -55,6 +55,8 @@ qttune_status_t qttune_session_create(
 
 qttune_status_t qttune_session_close(qttune_session_t* session);
 
+qttune_status_t qttune_session_start(qttune_session_t* session);
+
 /* Send/receive - synchronous API */
 qttune_status_t qttune_session_send(
     qttune_session_t* session,
@@ -88,6 +90,14 @@ qttune_status_t qttune_unregister_frame_callback(
     qttune_frame_callback_t callback,
     void* user_data
 );
+
+/* Optional: public transport API if you want to expose it */
+qttune_status_t qttune_transport_attach(
+    qttune_session_t* session,
+    const char* transport_uri
+);
+
+void qttune_transport_detach(qttune_session_t* session);
 
 #ifdef __cplusplus
 }
