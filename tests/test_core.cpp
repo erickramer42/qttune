@@ -237,3 +237,82 @@ TEST(CoreTest, SessionStartWithoutTransportFails) {
      * Not reachable via public API in v0.2 — skip rather than assert UB. */
     SUCCEED();
 }
+
+TEST(CoreTest, CallbackExecutesOnTransportWorkerThread) {
+    qttune_session_t* session = nullptr;
+    ASSERT_EQ(qttune_session_create("mock://thread-test", &session), QT_OK);
+
+    /* std::atomic<std::thread::id> is lock-free on all 3 CI platforms;
+     * mutex alternative also fine. */
+    std::atomic<std::thread::id> seen_id{};
+    struct Ctx { std::atomic<std::thread::id>* out; };
+    static Ctx ctx{&seen_id};  /* static: captureless lambda can't capture */
+
+    EXPECT_EQ(qttune_register_frame_callback(
+        session,
+        [](const qttune_frame_t*, void* ud) {
+            static_cast<Ctx*>(ud)->out->store(std::this_thread::get_id());
+        },
+        &ctx), QT_OK);
+
+    const auto main_id = std::this_thread::get_id();
+    EXPECT_EQ(qttune_session_start(session), QT_OK);
+
+    /* Budget >= 3 intervals (50ms fixed) + scheduling slack */
+    for (int i = 0; i < 40 && seen_id.load() == std::thread::id{}; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    EXPECT_NE(seen_id.load(), std::thread::id{});
+    EXPECT_NE(seen_id.load(), main_id);  /* Marshaling in bridge is MANDATORY */
+
+    EXPECT_EQ(qttune_session_close(session), QT_OK);
+}
+
+TEST(CoreTest, SelfUnregisterDuringLiveDispatch) {
+    /* Exercises the snapshot pattern against the REAL worker, not a
+     * manual dispatch. Snapshot contract: unregister mid-dispatch must
+     * neither deadlock nor skip subsequent registered callbacks. */
+    qttune_session_t* session = nullptr;
+    ASSERT_EQ(qttune_session_create("mock://reentry", &session), QT_OK);
+
+    std::atomic<int> self_count{0};
+    std::atomic<int> other_count{0};
+
+    struct Ctx {
+        qttune_session_t* session;
+        std::atomic<int>* self_count;
+    };
+    static Ctx ctx{nullptr, &self_count};
+    ctx.session = session;
+
+    EXPECT_EQ(qttune_register_frame_callback(
+        session,
+        [](const qttune_frame_t*, void* ud) {
+            Ctx* c = static_cast<Ctx*>(ud);
+            /* Runs on worker; unregister touches the same mutex being
+             * snapshotted — this IS the deadlock regression test. */
+            qttune_unregister_frame_callback(
+                c->session,
+                [](const qttune_frame_t*, void* u) {
+                    static_cast<Ctx*>(u)->self_count->fetch_add(1);
+                },
+                ud);
+            c->self_count->fetch_add(1);
+        },
+        &ctx), QT_OK);
+
+    EXPECT_EQ(qttune_register_frame_callback(
+        session,
+        [](const qttune_frame_t*, void* ud) {
+            static_cast<std::atomic<int>*>(ud)->fetch_add(1);
+        },
+        &other_count), QT_OK);
+
+    EXPECT_EQ(qttune_session_start(session), QT_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+    EXPECT_EQ(self_count.load(), 1);     /* self-unregistered after first fire */
+    EXPECT_GT(other_count.load(), 0);   /* sibling registration survived */
+    EXPECT_EQ(qttune_session_close(session), QT_OK);  /* must not hang */
+}
