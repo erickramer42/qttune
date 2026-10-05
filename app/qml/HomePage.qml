@@ -86,7 +86,7 @@ Rectangle {
             color: Theme.text
             Layout.alignment: Qt.AlignHCenter
         }
-        // des
+        // description text
         Text {
             text: qsTr("ECU reader / logger")
             font.pixelSize: 16
@@ -106,9 +106,12 @@ Rectangle {
                 anchors.fill: parent
                 anchors.margins: 12
 
-                Rectangle { width: 10; height: 10; radius: 5; color: Theme.danger }  // session status dot
+                Rectangle {
+                    width: 10; height: 10; radius: 5
+                    color: QtTune.connected ? Theme.success : Theme.danger
+                }
                 Text {
-                    text: qsTr("No session")
+                    text: QtTune.connected ? qsTr("Session active") : qsTr("No session")
                     color: Theme.textDim
                     font.pixelSize: 13
                 }
@@ -122,10 +125,21 @@ Rectangle {
         }
 
         ThemedButton {
-            text: qsTr("Start session")
+            text: QtTune.connected ? qsTr("End session") : qsTr("Start session")
             Layout.alignment: Qt.AlignHCenter
             Layout.topMargin: 8
-            // v0.2.0 bridge: connect mock:// + navigate to Log
+            onClicked: {
+                if (QtTune.connected) {
+                    QtTune.disconnectSession()
+                } else {
+                    var err = QtTune.connectSession("mock://demo")
+                    if (err !== "") {
+                        console.error("connect failed:", err)
+                        return
+                    }
+                    gotoPage(2)   // jump to Log
+                }
+            }
         }
 
         Text {

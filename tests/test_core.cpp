@@ -269,50 +269,55 @@ TEST(CoreTest, CallbackExecutesOnTransportWorkerThread) {
     EXPECT_EQ(qttune_session_close(session), QT_OK);
 }
 
+namespace {
+
+struct ReentryCtx {
+    qttune_session_t* session = nullptr;
+    std::atomic<int> self_count{0};
+    std::atomic<int> other_count{0};
+};
+
+/* NAMED function — required so the callback can unregister ITSELF.
+ * A captureless lambda cannot refer to its own function pointer. */
+void self_unregistering_cb(const qttune_frame_t*, void* user_data)
+{
+    ReentryCtx* c = static_cast<ReentryCtx*>(user_data);
+    c->self_count.fetch_add(1, std::memory_order_relaxed);
+    /* Runs on worker thread while snapshot dispatch is mid-iteration.
+     * Touches the callback registry (same mutex being snapshotted).
+     * Deadlocks here if the snapshot pattern regresses. */
+    qttune_unregister_frame_callback(c->session, &self_unregistering_cb, user_data);
+}
+
+void sibling_counter_cb(const qttune_frame_t*, void* user_data)
+{
+    static_cast<ReentryCtx*>(user_data)->other_count
+        .fetch_add(1, std::memory_order_relaxed);
+}
+
+} // namespace
+
 TEST(CoreTest, SelfUnregisterDuringLiveDispatch) {
-    /* Exercises the snapshot pattern against the REAL worker, not a
-     * manual dispatch. Snapshot contract: unregister mid-dispatch must
-     * neither deadlock nor skip subsequent registered callbacks. */
     qttune_session_t* session = nullptr;
     ASSERT_EQ(qttune_session_create("mock://reentry", &session), QT_OK);
 
-    std::atomic<int> self_count{0};
-    std::atomic<int> other_count{0};
-
-    struct Ctx {
-        qttune_session_t* session;
-        std::atomic<int>* self_count;
-    };
-    static Ctx ctx{nullptr, &self_count};
+    ReentryCtx ctx;   // stack-local is safe: session_close joins the worker
     ctx.session = session;
 
     EXPECT_EQ(qttune_register_frame_callback(
-        session,
-        [](const qttune_frame_t*, void* ud) {
-            Ctx* c = static_cast<Ctx*>(ud);
-            /* Runs on worker; unregister touches the same mutex being
-             * snapshotted — this IS the deadlock regression test. */
-            qttune_unregister_frame_callback(
-                c->session,
-                [](const qttune_frame_t*, void* u) {
-                    static_cast<Ctx*>(u)->self_count->fetch_add(1);
-                },
-                ud);
-            c->self_count->fetch_add(1);
-        },
-        &ctx), QT_OK);
-
+        session, &self_unregistering_cb, &ctx), QT_OK);
     EXPECT_EQ(qttune_register_frame_callback(
-        session,
-        [](const qttune_frame_t*, void* ud) {
-            static_cast<std::atomic<int>*>(ud)->fetch_add(1);
-        },
-        &other_count), QT_OK);
+        session, &sibling_counter_cb, &ctx), QT_OK);
 
     EXPECT_EQ(qttune_session_start(session), QT_OK);
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
-    EXPECT_EQ(self_count.load(), 1);     /* self-unregistered after first fire */
-    EXPECT_GT(other_count.load(), 0);   /* sibling registration survived */
-    EXPECT_EQ(qttune_session_close(session), QT_OK);  /* must not hang */
+    /* Exactly one self-invocation: snapshot allowed THIS dispatch to
+     * complete, and the removal took effect for every frame after. */
+    EXPECT_EQ(ctx.self_count.load(), 1);
+    /* Sibling survived the concurrent removal untouched. */
+    EXPECT_GE(ctx.other_count.load(), 3);
+
+    /* Quiesce: close joins worker; must not hang under reentry. */
+    EXPECT_EQ(qttune_session_close(session), QT_OK);
 }

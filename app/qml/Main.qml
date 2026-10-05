@@ -16,21 +16,50 @@ ApplicationWindow {
     readonly property bool isCompact: width < 720
     readonly property int currentPage: stack.currentIndex
 
+    function gotoPage(index) { stack.currentIndex = index }
+
+    readonly property bool bridgeConnected: QtTune.connected
+    readonly property bool isConnecting: false  // Future: async loading state
+
     header: ToolBar {
         height: 48
         background: Rectangle {
             color: Theme.surface
-            Rectangle { // 1px accent underline — cheap, looks deliberate
+            Rectangle { // 1px accent underline
                 anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
                 height: 2; color: Theme.primary
             }
         }
-        Label {
-            anchors.centerIn: parent
-            text: qsTr("QtTune — core %1 [%2]")
-                .arg(QtTune.coreVersion)
-                .arg(QtTune.coreInitialized ? qsTr("ready") : qsTr("init failed"))
-            color: QtTune.coreInitialized ? Theme.text : Theme.danger
+        RowLayout {
+            anchors.fill: parent
+            spacing: 12
+            
+            Label {
+                Layout.alignment: Qt.AlignLeft | Qt.AlignVCenter
+                text: qsTr("QtTune — core %1 [%2]")
+                    .arg(QtTune.coreVersion)
+                    .arg(QtTune.coreInitialized ? qsTr("ready") : qsTr("init failed"))
+                color: QtTune.coreInitialized ? Theme.text : Theme.danger
+            }
+            
+            Item { Layout.fillWidth: true }  // Spacer
+            
+            Button {
+                id: connBtn
+                text: QtTune.connected ? qsTr("Disconnect") : qsTr("Connect Mock")
+                enabled: QtTune.coreInitialized
+                background: Rectangle {
+                    radius: Theme.radius
+                    color: QtTune.connected ? Theme.elevated : Theme.primary
+                }
+                onClicked: QtTune.connected ? QtTune.disconnectSession()
+                                             : QtTune.connectSession("mock://demo")
+            }
+            Label {
+                text: qsTr("%1 fps-drop:%2").arg(QtTune.frameCount).arg(QtTune.droppedFrames)
+                color: Theme.textDim
+                visible: QtTune.frameCount > 0
+            }
         }
     }
 

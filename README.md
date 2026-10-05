@@ -49,22 +49,32 @@ Intended path: open in Qt Creator → select Android or iOS kit → Run. The
 QML, bridge, and core are shared; only the kit differs. Not yet verified
 on a device/emulator.
 
-## Roadmap
+## Features
 
-| Phase | Goals | Status |
-|-------|-------|--------|
-| v0.1.0 | Skeleton: core ABI, Qt shell, responsive layout | ✅ Released |
-| v0.2.0 | Callback API (done), mock transport, bridge marshaling | 🚧 In Progress |
-| v0.3.0 | J2534 transport, live vehicle read/logging | Future |
-| v0.4.0 | Security access discovery, flash capability | Future |
+- Cross-platform: Windows, macOS, Linux; desktop validated, mobile unvalidated
+- Qt-free C++ core behind a stable C ABI — UI layers are replaceable skins
+- Live frame logging: mock transport streams synthetic CAN frames end-to-end
+  — core worker thread → GUI-thread bridge → sort proxy → virtualized log table
+- Session lifecycle: create/start/stop/close with clean worker quiesce
+- Thread-safe by construction: UI receives display values only; all parsing in core
+- Backpressure: drop-at-source above 10k-frame cap with honest accounting
+- Sort toggle: newest-first (live edge at viewport top) / oldest-first (chronological)
+
+## Status / Roadmap
+
+| Version | Milestone | Status |
+|---------|-----------|--------|
+| v0.1.0  | Skeleton: core ABI, Qt shell, responsive layout | ✅ Released |
+| v0.2.0  | Callback API, mock transport, bridge marshaling, live LogPage | ✅ Ready to tag |
+| v0.3.0  | J2534 transport, live vehicle read/logging | Planned |
+| v0.4.0  | Security access discovery, flash capability | Planned |
 | v0.5.0+ | Multi-manufacturer plugins | Future |
 
 [![CI](https://github.com/erickramer42/qttune/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/qttune/actions/workflows/ci.yml)
 
-Flash capabilities require discovering each manufacturer's secure
-gateway authentication. Vehicle communication research is tracked
-separately and outside this repo for now.
+v0.2.0 ships with 23 automated tests (17 core, 6 bridge), all green on Windows/MSVC 2022 locally; CI matrix to confirm. Mock frames only — no real vehicle communication yet. See [STATUS.md](STATUS.md) for verified test matrix and engineering notes.
 
+Flash capabilities require discovering each manufacturer's secure gateway authentication. Vehicle communication research is tracked separately and outside this repo for now.
 
 ## Plugins
 

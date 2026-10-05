@@ -37,7 +37,7 @@ target_link_libraries(qttune PRIVATE
 
 set_target_properties(qttune PROPERTIES
     MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
+    # WIN32_EXECUTABLE TRUE
 )
 
 # Icon helpers later: qt_add_resources, ios/macos asset catalogs, etc.
