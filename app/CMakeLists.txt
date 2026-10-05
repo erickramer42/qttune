@@ -1,4 +1,4 @@
-find_package(Qt6 6.5 REQUIRED COMPONENTS Quick)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Quick QuickControls2)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -11,18 +11,27 @@ qt_add_executable(qttune
     qttunebridge.h
 )
 
+set_source_files_properties(qml/Theme.qml PROPERTIES
+    QT_QML_SINGLETON_TYPE TRUE
+)
+
 qt_add_qml_module(qttune
     URI QtTune
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+        qml/HomePage.qml
+        qml/ThemedButton.qml  
         qml/DashboardPage.qml
         qml/LogPage.qml
         qml/SettingsPage.qml
+        qml/NavButton.qml
+        qml/Theme.qml
 )
 
 target_link_libraries(qttune PRIVATE
     Qt6::Quick
+    Qt6::QuickControls2
     qttune-core
 )
 

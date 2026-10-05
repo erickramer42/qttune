@@ -1,6 +1,7 @@
 #include <QGuiApplication>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#include <QQuickStyle> 
 
 #include "qttunebridge.h"
 #include "qttune/version.h" 
@@ -12,10 +13,12 @@ int main(int argc, char *argv[])
     app.setApplicationName("QtTune");
     app.setApplicationVersion(QStringLiteral(QTTUNE_VERSION_STRING));
 
+    QQuickStyle::setStyle("Basic");
+
     QtTuneBridge bridge;
 
     QQmlApplicationEngine engine;
-    engine.rootContext()->setContextProperty("Qtune", &bridge);
+    engine.rootContext()->setContextProperty("QtTune", &bridge);
     engine.loadFromModule("QtTune", "Main");
 
     if (engine.rootObjects().isEmpty()) {
