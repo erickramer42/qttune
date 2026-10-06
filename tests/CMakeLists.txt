@@ -18,7 +18,17 @@ target_link_libraries(test_core PRIVATE
     GTest::gtest_main
 )
 
-add_test(NAME CoreTests COMMAND test_core)
+gtest_discover_tests(test_core) 
+
+# --- Signals tests: MUST stay Qt-free (Ubuntu CI job has no Qt installed) ---
+add_executable(test_signals test_signals.cpp)
+
+target_link_libraries(test_signals PRIVATE
+    qttune-core
+    GTest::gtest_main
+)
+
+gtest_discover_tests(test_signals)
 
 # --- Bridge tests: only when the full app (and Qt) is available ---
 if(NOT QTTUNE_BUILD_CORE_ONLY)
@@ -42,10 +52,7 @@ if(NOT QTTUNE_BUILD_CORE_ONLY)
         GTest::gtest
     )
 
-    add_test(NAME BridgeTests COMMAND test_bridge)
-
-    # Copy all runtime DLLs (Qt6Core.dll, ...) next to the exe at build time.
-    # Works for manual runs AND ctest, all configs, no PATH games.
+    # Copy Qt DLLs at build time
     if(WIN32)
         add_custom_command(TARGET test_bridge POST_BUILD
             COMMAND ${CMAKE_COMMAND}
@@ -53,6 +60,12 @@ if(NOT QTTUNE_BUILD_CORE_ONLY)
                     $<TARGET_RUNTIME_DLLS:test_bridge>
                     $<TARGET_FILE_DIR:test_bridge>
             COMMAND_EXPAND_LISTS
+            COMMENT "Copying Qt runtime DLLs to test_bridge output dir"
         )
     endif()
+
+    gtest_discover_tests(test_bridge)
+
+    # Tell ctest/gtest_discover where Qt DLLs live at runtime
+    get_filename_component(QT_BIN_DIR "${Qt6Core_DIR}/../../bin" REALPATH)
 endif()
