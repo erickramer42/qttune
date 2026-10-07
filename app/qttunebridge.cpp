@@ -217,7 +217,9 @@ void QtTuneBridge::handleFrameInternal(const qttune_frame_t* frame)
 
     m_sourceModel->appendFrame(vm);
     ++m_currentFrameCount;
+    ++m_guiNotifyCount;
     emit frameCountChanged();
+    emit notifyCountChanged(m_guiNotifyCount);
 
     // and sync the drop counter to the GUI thread while we're here:
     const int dropped = m_droppedFrames.load(std::memory_order_relaxed);

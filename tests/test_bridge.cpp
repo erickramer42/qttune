@@ -166,3 +166,13 @@ TEST(BridgeTest, SortProxyTogglesToOldestFirst)
 
     bridge.disconnectSession();
 }
+
+TEST(BridgeTest, NotifyCountTracksFrameProcessing)
+{
+    QtTuneBridge bridge;
+    ASSERT_TRUE(bridge.connectSession("mock://notify").isEmpty());
+    spinLoop(300);
+    EXPECT_EQ(bridge.guiNotifyCount(), bridge.frameCount());
+    EXPECT_GT(bridge.guiNotifyCount(), 0);
+    bridge.disconnectSession();
+}

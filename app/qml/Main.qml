@@ -56,7 +56,10 @@ ApplicationWindow {
                                              : QtTune.connectSession("mock://demo")
             }
             Label {
-                text: qsTr("%1 fps-drop:%2").arg(QtTune.frameCount).arg(QtTune.droppedFrames)
+                text: qsTr("frames:%1 notify:%2 drop:%3")
+                    .arg(QtTune.frameCount)
+                    .arg(QtTune.guiNotifyCount)
+                    .arg(QtTune.droppedFrames)
                 color: Theme.textDim
                 visible: QtTune.frameCount > 0
             }

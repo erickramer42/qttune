@@ -87,6 +87,7 @@ class QtTuneBridge : public QObject
     Q_PROPERTY(int frameCount READ frameCount NOTIFY frameCountChanged)
     Q_PROPERTY(int droppedFrames READ droppedFrames NOTIFY droppedFramesChanged)
     Q_PROPERTY(FrameSortProxy* model READ model CONSTANT)
+    Q_PROPERTY(int guiNotifyCount READ guiNotifyCount NOTIFY notifyCountChanged)
 
 public:
     explicit QtTuneBridge(QObject* parent = nullptr);
@@ -98,6 +99,7 @@ public:
     int frameCount() const { return m_currentFrameCount; }
     int droppedFrames() const { return m_droppedFrames.load(std::memory_order_relaxed); }
     FrameSortProxy* model() const { return m_sortProxy; }   // QML binds the PROXY
+    int guiNotifyCount() const { return m_guiNotifyCount; }
 
     Q_INVOKABLE QString statusString(int statusCode) const;
     Q_INVOKABLE int maxFrameCount() const { return FrameListModel::MaxFrames; }
@@ -113,6 +115,7 @@ signals:
     void frameCountChanged();
     void framesReset();
     void droppedFramesChanged(int);
+    void notifyCountChanged(int newCount);
 
 private:
     static void onFrame(const qttune_frame_t* frame, void* user_data);   // worker thread
@@ -129,4 +132,7 @@ private:
 
     FrameListModel* m_sourceModel = nullptr;  // canonical storage
     FrameSortProxy* m_sortProxy = nullptr;    // view-facing
+
+    int m_guiNotifyCount = 0;           // incremented per frame notification
+    // QAtomicInteger<int> m_notifyRateCounter{0};  // for rate calc (optional, per-second)
 };
