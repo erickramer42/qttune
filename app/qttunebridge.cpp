@@ -5,6 +5,8 @@
 #include <QMetaObject>
 #include <QByteArray>
 
+#include <algorithm>
+
 // ---------------- FrameListModel ----------------
 FrameListModel::FrameListModel(QObject* parent)
     : QAbstractListModel(parent)
@@ -133,20 +135,20 @@ QHash<int, QByteArray> SignalListModel::roleNames() const
     };
 }
 
-void SignalListModel::setSignalSet(const void* set)
+// FIX: typed parameter — no reinterpretation of a void* at the call site.
+void SignalListModel::setSignalSet(const QttuneSignalSet* set)
 {
-    const QttuneSignalSet* sigSet = static_cast<const QttuneSignalSet*>(set);
-    if (!sigSet || !sigSet->defs) return;
+    if (!set || !set->defs) return;
 
     beginResetModel();
     m_entries.clear();
     m_subscribedCount = 0;
 
-    for (uint32_t i = 0; i < sigSet->count; ++i) {
+    for (uint32_t i = 0; i < set->count; ++i) {
         Entry e = {};
-        e.id = sigSet->defs[i].id;
-        strncpy(e.name, sigSet->defs[i].name, sizeof(e.name) - 1);
-        strncpy(e.unit, sigSet->defs[i].unit, sizeof(e.unit) - 1);
+        e.id = set->defs[i].id;
+        strncpy(e.name, set->defs[i].name, sizeof(e.name) - 1);
+        strncpy(e.unit, set->defs[i].unit, sizeof(e.unit) - 1);
         e.subscribed = true;
         ++m_subscribedCount;
         m_entries.push_back(e);
@@ -171,8 +173,6 @@ void SignalListModel::updateValues(const std::vector<std::pair<uint16_t, float>>
         }
     }
     if (firstRow >= 0) {
-        // one contiguous range instead of per-row notifications — that's
-        // the coalescing promise at the model layer too
         emit dataChanged(index(firstRow), index(lastRow), {ValueRole});
     }
 }
@@ -198,7 +198,6 @@ QtTuneBridge::QtTuneBridge(QObject* parent)
     m_initialized = (qttune_init() == QT_OK);
     m_sortProxy->setSourceModel(m_sourceModel);
 
-    // Coalescing timer: 100ms window for batched signal updates
     connect(m_coalesceTimer, &QTimer::timeout, this, [this]() {
         if (!m_stagingBuffer.empty()) {
             m_signalModel->updateValues(m_stagingBuffer);
@@ -266,8 +265,9 @@ QString QtTuneBridge::connectSession(const QString& uri)
     m_connected.store(true, std::memory_order_release);
     m_currentFrameCount = 0;
     m_droppedFrames.store(0, std::memory_order_relaxed);
+    m_lastReportedDropped = 0;
     m_signalModel->setSignalSet(qttune_mock_signal_set());
-    m_coalesceTimer->start(100);  // <-- start batching timer
+    m_coalesceTimer->start(100);
     emit connectedChanged(true);
     emit framesReset();
     return {};
@@ -282,7 +282,7 @@ void QtTuneBridge::disconnectSession()
         qttune_session_close(m_session);
         m_session = nullptr;
     }
-    m_coalesceTimer->stop();  // <-- stop batching timer
+    m_coalesceTimer->stop();
     emit connectedChanged(false);
 }
 
@@ -293,7 +293,6 @@ void QtTuneBridge::clearFrames()
     emit framesReset();
 }
 
-// qttunebridge.cpp
 void QtTuneBridge::onFrame(const qttune_frame_t* frame, void* user_data)
 {
     QtTuneBridge* self = static_cast<QtTuneBridge*>(user_data);
@@ -301,15 +300,34 @@ void QtTuneBridge::onFrame(const qttune_frame_t* frame, void* user_data)
     if (!self->m_connected.load(std::memory_order_acquire)) return;
 
     // Backpressure: bound the QUEUED backlog, not the lifetime count.
-    // The model handles total memory via its own ring eviction.
     if (self->m_inFlightFrames.load(std::memory_order_relaxed) >= MaxInFlightFrames) {
         self->m_droppedFrames.fetch_add(1, std::memory_order_relaxed);
+        // FIX: report drops from the worker path too. Previously drops were
+        // only surfaced from handleFrameInternal, which never runs while the
+        // backlog is saturated — exactly when the user needs to know.
+        // m_dropNotifyPending collapses this to at most one queued notification.
+        bool expected = false;
+        if (self->m_dropNotifyPending.compare_exchange_strong(expected, true)) {
+            QMetaObject::invokeMethod(self, [self]() {
+                // Clear the flag FIRST: if new drops arrive while we process,
+                // a fresh notification is allowed to be queued and will read
+                // a newer value. Reset-after-read could suppress a drop report.
+                self->m_dropNotifyPending.store(false, std::memory_order_release);
+                self->notifyDropped();
+            }, Qt::QueuedConnection);
+        }
         return;
     }
 
+    // qttune_frame_t holds its payload INLINE (uint8_t data[64]) — this struct
+    // copy is a deep copy of the payload; no dangling pointer is possible.
     const qttune_frame_t copy = *frame;
     self->m_inFlightFrames.fetch_add(1, std::memory_order_relaxed);
 
+    // Lifetime contract: invoking with `self` as context object means the
+    // queued lambda is dropped if the bridge is destroyed before it runs.
+    // DO NOT change to a context-free postEvent pattern without revisiting
+    // destruction ordering.
     QMetaObject::invokeMethod(self, [self, copy]() {
         self->m_inFlightFrames.fetch_sub(1, std::memory_order_relaxed);
         self->handleFrameInternal(&copy);
@@ -320,25 +338,44 @@ void QtTuneBridge::handleFrameInternal(const qttune_frame_t* frame)
 {
     if (!m_connected.load(std::memory_order_acquire)) return;
 
+    // Defensive clamp: a misbehaving transport must never make us read past
+    // the inline buffer, even if data_length exceeds the documented 0-64.
+    const uint8_t len = (frame->data_length <= sizeof(frame->data))
+                        ? frame->data_length
+                        : sizeof(frame->data);
+
     QVariantMap vm;
     vm["timestampUs"] = QVariant::fromValue<quint64>(frame->timestamp_us);
-    vm["dlc"] = static_cast<uint32_t>(frame->data_length);
+    vm["dlc"] = static_cast<uint32_t>(len);
     vm["extended"] = frame->is_extended != 0;
     vm["payloadHex"] = QByteArray(
         reinterpret_cast<const char*>(frame->data),
-        static_cast<qsizetype>(frame->data_length)).toHex();
+        static_cast<qsizetype>(len)).toHex();
 
     m_sourceModel->appendFrame(vm);
     ++m_currentFrameCount;
 
-    // Decode signals into staging buffer
+    // Decode signals into staging buffer — latest value per signal ID wins.
+    // FIX: was clear()-and-refill (last frame's snapshot), now merges
+    // across frames within the 100ms coalescing window. FIX: was hardcoded
+    // length 8; uses actual payload length so CAN-FD / short frames decode
+    // correctly and out-of-range signals fail cleanly in the decoder.
     const QttuneSignalSet* set = qttune_mock_signal_set();
-    m_stagingBuffer.clear();
     for (uint32_t i = 0; i < set->count; ++i) {
         const QttuneSignalDef& def = set->defs[i];
         float val = 0.0f;
-        if (qttune_decode_signal(&def, frame->data, 8, &val) == 0) {
-            m_stagingBuffer.emplace_back(def.id, val);
+        if (qttune_decode_signal(&def, frame->data, len, &val) == 0) {
+            bool merged = false;
+            for (auto& staged : m_stagingBuffer) {
+                if (staged.first == def.id) {
+                    staged.second = val;   // overwrite with newest sample
+                    merged = true;
+                    break;
+                }
+            }
+            if (!merged) {
+                m_stagingBuffer.emplace_back(def.id, val);
+            }
         }
     }
 
@@ -346,6 +383,11 @@ void QtTuneBridge::handleFrameInternal(const qttune_frame_t* frame)
     emit frameCountChanged();
     emit notifyCountChanged(m_guiNotifyCount);
 
+    notifyDropped();
+}
+
+void QtTuneBridge::notifyDropped()
+{
     const int dropped = m_droppedFrames.load(std::memory_order_relaxed);
     if (dropped != m_lastReportedDropped) {
         m_lastReportedDropped = dropped;
@@ -359,4 +401,10 @@ void QtTuneBridge::forceFrameCountForTesting(int count)
         return;
     }
     m_currentFrameCount = count;
+    emit frameCountChanged();   // FIX: keep the QML binding consistent
+}
+
+void QtTuneBridge::dispatchFrameForTesting(const qttune_frame_t& frame)
+{
+    onFrame(&frame, this);
 }

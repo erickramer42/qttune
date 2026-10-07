@@ -223,3 +223,89 @@ TEST(BridgeTest, StreamingContinuesPastTenThousandFrames)
 
     bridge.disconnectSession();
 }
+
+TEST(BridgeTest, DispatchedShortFrameHonorsDataLength)
+{
+    QtTuneBridge bridge;
+    ASSERT_TRUE(bridge.connectSession("mock://short").isEmpty());
+
+    // Unique timestamp so we can find OUR row among mock frames
+    qttune_frame_t f{};
+    f.timestamp_us = 777777;   // steady-clock µs from the mock won't collide
+    f.channel_id = 0;
+    f.data_length = 4;          // the whole point: NOT 8
+    f.is_extended = 1;
+    f.data[0] = 0x34;           // arbitrary RPM-looking bytes
+    f.data[1] = 0x12;
+    f.data[2] = 0xAA;
+    f.data[3] = 0x55;
+
+    bridge.dispatchFrameForTesting(f);
+    spinLoop(200);              // let the queued dispatch + coalesce tick run
+
+    // Find our row in the (sorted) proxy
+    FrameSortProxy* proxy = bridge.model();
+    int foundRow = -1;
+    for (int r = 0; r < proxy->rowCount(); ++r) {
+        if (proxy->data(proxy->index(r, 0),
+                FrameListModel::TimestampRole).toULongLong() == 777777) {
+            foundRow = r;
+            break;
+        }
+    }
+    ASSERT_NE(foundRow, -1) << "dispatched frame never reached the model";
+
+    const QModelIndex idx = proxy->index(foundRow, 0);
+    // DLC must reflect the ACTUAL length, not an assumed 8
+    EXPECT_EQ(proxy->data(idx, FrameListModel::DlcRole).toUInt(), 4u);
+    // Hex payload is exactly 4 bytes -> 8 hex chars, not 16
+    EXPECT_EQ(proxy->data(idx, FrameListModel::PayloadRole).toString().size(), 8);
+    EXPECT_TRUE(proxy->data(idx, FrameListModel::ExtendedRole).toBool());
+
+    bridge.disconnectSession();
+}
+
+TEST(BridgeTest, BackpressureDropsAreCountedAndReported)
+{
+    QtTuneBridge bridge;
+    ASSERT_TRUE(bridge.connectSession("mock://drops").isEmpty());
+
+    // Lambda-counter instead of QSignalSpy: avoids a new Qt6::Test dependency
+    int notifyCount = 0;
+    int lastReported = -1;
+    QObject::connect(&bridge, &QtTuneBridge::droppedFramesChanged,
+                     [&](int dropped) { ++notifyCount; lastReported = dropped; });
+
+    qttune_frame_t f{};
+    f.data_length = 8;
+
+    const int inject = QtTuneBridge::maxInFlightForTesting() + 500;
+
+    // Synchronous flood from the test thread: no event processing happens,
+    // so in-flight climbs monotonically to the cap and stays there.
+    for (int i = 0; i < inject; ++i) {
+        f.timestamp_us = 1000000 + static_cast<uint64_t>(i);
+        bridge.dispatchFrameForTesting(f);
+    }
+
+    // Drops happened during saturation (loop 1001..1500 hit the gate).
+    // GE not EQ: the mock worker may contribute a frame or two mid-loop.
+    EXPECT_GE(bridge.droppedFrames(), 500);
+
+    // Nothing could have been reported yet — the queue hasn't been processed
+    EXPECT_EQ(notifyCount, 0);
+
+    spinLoop(800);   // drain the 1000 queued invocations
+
+    // Accounting survived the drain
+    EXPECT_GE(bridge.droppedFrames(), 500);
+    // The consolidated notification arrived with the final value
+    EXPECT_GE(notifyCount, 1);
+    EXPECT_EQ(lastReported, bridge.droppedFrames());
+    // The queued frames were actually processed, not silently lost
+    EXPECT_GT(bridge.frameCount(), 900);
+    // Drained backlog frees the gate again — no permanent wedge
+    // (the running mock resumes normal delivery after this)
+
+    bridge.disconnectSession();
+}

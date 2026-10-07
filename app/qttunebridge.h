@@ -1,4 +1,3 @@
-// File/layer: app/qttunebridge.h | C++17, Qt 6.12+, MSVC/Clang/GCC
 #pragma once
 
 #include <QObject>
@@ -9,9 +8,11 @@
 #include <QTimer>
 
 #include <atomic>
+#include <utility>
 #include <vector>
 
 #include "qttune/core.h"
+#include "qttune/signals.h"   
 
 class FrameListModel : public QAbstractListModel
 {
@@ -82,7 +83,7 @@ public:
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role = Qt::DisplayRole) const override;
     QHash<int, QByteArray> roleNames() const override;
-    void setSignalSet(const void* set);  // opaque pointer to QttuneSignalSet
+    void setSignalSet(const QttuneSignalSet* set);  // FIX: typed param, no void* cast at boundary
     void updateValues(const std::vector<std::pair<uint16_t, float>>& values);
     int subscribedCount() const { return static_cast<int>(m_subscribedCount); }
 
@@ -131,6 +132,8 @@ public:
     int guiNotifyCount() const { return m_guiNotifyCount; }
     int signalBatchCount() const { return m_signalBatchCount; }
     SignalListModel* signalModel() const { return m_signalModel; }
+    void dispatchFrameForTesting(const qttune_frame_t& frame);
+    static constexpr int maxInFlightForTesting() { return MaxInFlightFrames; }
 
     Q_INVOKABLE QString statusString(int statusCode) const;
     Q_INVOKABLE int maxFrameCount() const { return FrameListModel::MaxFrames; }
@@ -153,6 +156,7 @@ signals:
 private:
     static void onFrame(const qttune_frame_t* frame, void* user_data);
     void handleFrameInternal(const qttune_frame_t* frame);
+    void notifyDropped();   // FIX: consolidated drop reporting, callable from worker path
 
     bool m_initialized = false;
     qttune_session_t* m_session = nullptr;
@@ -160,13 +164,14 @@ private:
 
     std::atomic<bool> m_connected{false};
     std::atomic<int> m_droppedFrames{0};
-    int m_currentFrameCount = 0;
-    int m_lastReportedDropped = 0;
+    int m_currentFrameCount = 0;      // GUI-thread-only (queued invocations)
+    int m_lastReportedDropped = 0;     // GUI-thread-only companion to m_droppedFrames
 
     FrameListModel* m_sourceModel = nullptr;
     FrameSortProxy* m_sortProxy = nullptr;
 
     QTimer* m_coalesceTimer = nullptr;
+    // FIX: latest-value-per-signal-ID staging (merge, not clear-and-refill)
     std::vector<std::pair<uint16_t, float>> m_stagingBuffer;
     int m_signalBatchCount = 0;
 
@@ -174,5 +179,6 @@ private:
     int m_guiNotifyCount = 0;
 
     std::atomic<int> m_inFlightFrames{0};   // posted-but-not-yet-processed count
-    static constexpr int MaxInFlightFrames = 1000;   // queue backlog bound
+    std::atomic<bool> m_dropNotifyPending{false};   // FIX: one queued drop-notify at a time
+    static constexpr int MaxInFlightFrames = 1000; // queue backlog bound
 };
