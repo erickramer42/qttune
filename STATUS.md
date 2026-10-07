@@ -1,11 +1,11 @@
 # QtTune — Project Status
 
-**Date:** October 6, 2026
-**Version:** v0.2.0 (complete, pending tag); v0.3.0 Phase 1 (signals layer) complete
+**Date:** October 7, 2026
+**Version:** v0.2.0 (released); v0.3.0 Phases 1–1b (signals layer + mock emission) complete
 **Repository:** https://github.com/erickramer42/qttune
 **CI:** [![CI](https://github.com/erickramer42/qttune/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/qttune/actions/workflows/ci.yml)
 
-QtTune is a cross-platform ECU reader/logger, evolving toward a full tuning
+QtTune is a cross-platform ECU reader/logger, evolving into a full tuning
 application. The guiding architecture principle: **a Qt-free core library
 behind a stable C ABI, with UI layers as replaceable skins around it.**
 
@@ -16,7 +16,8 @@ behind a stable C ABI, with UI layers as replaceable skins around it.**
 |   Main / Dashboard / Log / |   720 px width, bottom TabBar below
 |   Settings pages           |   LogPage: live frame table, sort toggle
 +---------------+------------+
-                | QtTuneBridge (thread-marshaling seam, COMPLETE)
+                | QtTuneBridge (thread-marshaling seam, COMPLETE for
+                |   frame flow; signal decode consumption = v0.3 Phase 2)
                 |   worker→GUI via QMetaObject::invokeMethod (QueuedConnection)
 +---------------v------------+
 |         qttune-core        |   C++, C++17, C ABI exports
@@ -24,7 +25,8 @@ behind a stable C ABI, with UI layers as replaceable skins around it.**
 |  * Version/status reporting|
 |  * Frame callbacks (done)  |
 |  * Transports (mock done)  |
-|  * Signals (decode DONE)  |
+|  * Signals: decode + mock  |   signal_sets.cpp, SimState emission
+|  *   set + emission (done) |
 |  * Frame model (qtab)      |
 +----------------------------+
 
@@ -65,7 +67,7 @@ Contract highlights:
   via the droppedFrames property.
 - Signals emitted only on the GUI thread; worker touches atomics only.
 
-## Signals Layer (landed v0.3.0 Phase 1)
+## Signals Layer (landed v0.3.0 Phases 1 / 1b)
 
 POD signal metadata + linear decode: `display = raw * scale + offset`.
 
@@ -79,10 +81,23 @@ POD signal metadata + linear decode: `display = raw * scale + offset`.
 - `qttune_validate_signal(def)` — structural validation: num_bytes span,
   bit_offset/bit_length consistency, null-termination of fixed-width
   strings (last byte must be '\0').
+- `QttuneSignalSet` — swappable definition collections; the set's origin
+  is opaque to the decoder. Mock ships a built-in set
+  (`qttune_mock_signal_set`); future providers (DBC loader, manufacturer
+  plugins) construct sets through the same struct — decode ABI is
+  definition-source-agnostic by design.
 - **Motorola (MSB-first) bit numbering is a deliberate non-goal** until a
-  flags bit selects it — documented contract, not an omission.
-- Consumer is currently unit tests only; wiring into mock transport
-  emission and the bridge is the next phase.
+  flags bit selects it. First customer of a reserved flags bit is byte
+  order (DBC mixes Motorola and Intel freely) — documented contract,
+  not an omission.
+- **Mock emission (Phase 1b):** transport payloads come from a
+  tick-driven simulation — idle RPM wobble with periodic rev blips,
+  coolant warming from ambient toward thermostat, trailing IAT, coupled
+  throttle/load — encoded as the inverse of the signal definitions. The
+  transport never decodes (rule 2); it guarantees only "emitted payloads
+  are decodable by the mock set," enforced by integration test.
+- Live consumer is Phase 2 (coalesced LiveView); decoder currently
+  exercised by unit + integration tests.
 
 ## Callback API Design (landed v0.2.0)
 
@@ -104,26 +119,27 @@ handles (avoids the dangling-handle crash class):
 - **Callback contract:** runs on the transport worker thread; must not
   block; must not call `qttune_session_close()`.
 - **Close discipline:** `qttune_session_close()` flips the atomic
-  `closed` flag before teardown; transports must observe it and stop
-  dispatching (full join-the-worker-thread discipline lands with the
-  mock transport).
+  `closed` flag before teardown; transports observe it and stop
+  dispatching; detach joins the worker.
 
 ## What Works (verified)
 
 | Capability | Verified by |
 |---|---|
 | Core builds standalone with zero Qt deps | `core-and-tests` CI job (Ubuntu, Qt absent) |
-| 27 core-side unit tests pass: status strings, version format, init/shutdown idempotency, session arg validation, callback register/unregister, duplicate dedup, distinct-userdata registration, dispatch invocation, null-pointer paths, mock transport delivery, unknown-uri rejection, worker-thread identity, self-unregister reentry (17) + signal decode: UINT/INT decode, sign extension, scale/offset math, null pointers, bounds violations, bit-length validation, unsupported types, validator success/failure paths (10) | GTest suites (`test_core`, `test_signals`); 33/33 locally on Windows/MSVC 2022, CI matrix to confirm |
-| Mock transport delivers frames from background thread | Integration test (`MockTransportDeliversFrames`) verifies callbacks fire on worker thread, session_close joins worker without hang |
-| Signal decode layer: scale/offset, LSB-first bitfields, sign extension, bounds checking | `test_signals` suite (10 tests) |
-| Per-case ctest granularity for all suites | `gtest_discover_tests()` on all three test targets (resolves former debt) |
+| 37 tests pass: 18 core (lifecycle, callbacks, mock transport, worker-thread identity, self-unregister reentry, signal-set decode round-trip) + 13 signals (decode paths, sign extension, scale/offset, error codes, validator, mock set validation/unique IDs, set plausibility) + 6 bridge | GTest suites (`test_core`, `test_signals`, `test_bridge`); 37/37 locally on Windows/MSVC 2022, green on 3-platform CI matrix |
+| Mock transport delivers physically plausible, signal-set-decodable frames | `MockFramesDecodeAgainstMockSignalSet`: captures real worker-thread frames, decodes each under every mock definition, asserts physical ranges |
+| Signal decode layer: scale/offset, LSB-first bitfields, sign extension, bounds checking | `test_signals` suite (13 tests) |
+| Encoder/decoder layout contract holds | Round-trip integration test catches byte-order/scale inversions invisible to structural validation |
+| Mock transport delivers frames from background thread | `MockTransportDeliversFrames` verifies callbacks fire on worker thread, session_close joins worker without hang |
+| Per-case ctest granularity for all suites | `gtest_discover_tests()` on all three test targets |
 | Bridge marshals frames from worker thread to GUI thread | `FramesMarshalFromWorkerToGuiThread` asserts model mutation thread == GUI thread |
 | End-to-end frame flow: mock → core → bridge → proxy → QML | 6 bridge tests + manual smoke (log streaming, sort toggle, clear, disconnect mid-stream) |
 | Ordered frame log via sort proxy (newest/oldest-first toggle) | `SortProxyOrdersNewestFirstByDefault`, `SortProxyTogglesToOldestFirst` |
 | Full app builds on Windows (MSVC 2022, Qt 6.12.0) | `full-build` CI job |
 | Full app builds on macOS (AppleClang, Xcode 26 SDK, Qt 6.12.0) | `macos-build` CI job |
 | Responsive QML layout (desktop sidebar ↔ mobile TabBar breakpoint) | Local run, Windows |
-| Version string surfaces in UI (`QtTune — core 0.1.0 [ready]`) | Local run |
+| Version string surfaces in UI (`QtTune — core 0.2.0 [ready]`) | Local run; single source of truth via root CMake `project()` → generated `version.h` |
 | Self-unregistering callbacks survive live dispatch (snapshot pattern) | `SelfUnregisterDuringLiveDispatch`: exactly 1 self-invocation, sibling survives |
 | Callback thread identity via real worker path | `CallbackExecutesOnTransportWorkerThread` |
 | Bridge test target builds/runs on Windows (DLLs auto-deployed) | `$<TARGET_RUNTIME_DLLS>` post-build copy; ctest + direct run |
@@ -133,11 +149,10 @@ handles (avoids the dangling-handle crash class):
 v0.3.0 phases:
 
 - [x] **Phase 1 — Signals layer:** POD signal metadata ABI, scale/offset
-      decode, LSB-first bit extraction, sign extension, validator, 10
-      unit tests
-- [ ] **Phase 1b — Mock signal emission:** mock transport emits a defined
-      signal set so `qttune_decode_signal` runs through the real
-      worker-thread dispatch path (not just direct test calls)
+      decode, LSB-first bit extraction, sign extension, validator
+- [x] **Phase 1b — Mock signal emission:** tick-driven simulation encodes
+      payloads per the mock signal set; integration test proves the
+      decoder round-trips real worker-thread frames
 - [ ] **Phase 2 — Coalesced LiveView:** 100ms batched GUI updates,
       LiveView page with subscription checkboxes, 2D strip chart
 - [ ] **Phase 3 — J2534 hybrid loader:** registry discovery (dual WOW64
@@ -149,9 +164,12 @@ v0.3.0 phases:
 
 1. **aqtinstall pinned to git master on Windows CI.** aqt 3.3.0 mishandles
    the Qt 6.11+ repository layout; the Windows job installs aqt from
-   `git+https://github.com/miurahr/aqtinstall` directly. Revert to a
-   released version (or `install-qt-action`) once a fix ships — see
-   aqtinstall issues #959 / #1007.
+   `git+https://github.com/miurahr/aqtinstall` directly. A dev-master
+   snapshot hit the documented sporadic py7zr `Bad7zFile` extraction bug
+   once (install-qt-action#344 / aqtinstall#995); a clean re-run passed,
+   confirming sporadic-tool behavior. If flakiness recurs: pin a
+   known-good post-#1000 commit with `py7zr==1.1.0` alongside, and
+   revert to a PyPI release once one ships containing the fix.
 2. **Mobile builds unvalidated.** The QML/bridge/core are shared and the
    layout is responsive, but no Android/iOS kit build has been attempted.
 3. **Linux full-app build not in CI.** Deliberate: the Ubuntu runner
@@ -164,9 +182,10 @@ v0.3.0 phases:
    yet** — newest-first default needs none. v0.3 candidate.
 6. **Session API is single-threaded by contract** (bridge is sole caller);
    a session-level mutex is future hardening if that changes.
-7. **Signals layer has no live consumer yet.** Decode is verified at the
-   unit level only; wiring into mock emission + bridge + LiveView is
-   Phase 1b/2.
+7. **Signals layer has no UI consumer yet.** Decode is proven end-to-end
+   to the core boundary (integration test on real worker-thread frames);
+   bridge consumption + LiveView is Phase 2. UI appearance is unchanged
+   so far — Phase 1b was core-side only.
 
 ## Roadmap
 
@@ -174,7 +193,7 @@ v0.3.0 phases:
 |-------|-------|--------|
 | v0.1.0 | Skeleton: core ABI, Qt shell, responsive layout | ✅ Released |
 | v0.2.0 | Callback API, mock transport, CI + tests | ✅ Released |
-| v0.3.0 | Signals layer, coalesced LiveView, J2534 transport, live vehicle read/logging | 🚧 Phase 1 done |
+| v0.3.0 | Signals layer, coalesced LiveView, J2534 transport, live vehicle read/logging | 🚧 Phases 1–1b done |
 | v0.4.0 | Security access discovery, flash capability | Planned |
 | v0.5.0+ | Multi-manufacturer plugin modules | Planned |
 
@@ -241,6 +260,19 @@ closing the per-case-granularity debt and giving free
 silent-empty-suite detection; the legacy PATH-environment properties
 were dropped alongside (build-tree RPATH covered non-Windows cases, the
 DLL copy step covers Windows).
+
+**2026-10-07 — signals emission round (v0.3.0 Phase 1b):** the C
+standard bites again — designated initializers are C++20, not C++17,
+and MSVC accepts them permissively while GCC/Clang on the Ubuntu CI job
+will reject them; both struct-array definitions were rebuilt through
+plain constructor helpers. Lesson reinforced twice over this round:
+*code that compiles on your machine is not code that compiles* — the
+three-compiler matrix is the only authority. Design note worth keeping:
+the mock transport encodes simulation values as the **inverse** of the
+signal definitions but never decodes them; the encoder/decoder contract
+is enforced by a round-trip integration test because byte-order and
+scale inversions pass all structural checks while producing physically
+absurd values — only range assertions catch that failure class.
 
 ---
 
