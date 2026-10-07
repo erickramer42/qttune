@@ -4,7 +4,8 @@
 > See [DISCLAIMER.md](DISCLAIMER.md) for full terms before use.
 
 [![CI](https://github.com/erickramer42/qttune/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/qttune/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/erickramer42/qttune/badge.svg)](https://api.securityscorecards.dev/projects/github.com/erickramer42/qttune)
+
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/erickramer42/qttune/badge)](https://scorecard.dev/viewer/?uri=github.com/erickramer42/qttune)
 
 Cross-platform ECU reader/logger, evolving into a full tuning application.
 Qt/QML frontend with a shared codebase targeting desktop (Windows, Linux,
