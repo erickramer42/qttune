@@ -176,3 +176,50 @@ TEST(BridgeTest, NotifyCountTracksFrameProcessing)
     EXPECT_GT(bridge.guiNotifyCount(), 0);
     bridge.disconnectSession();
 }
+
+TEST(BridgeTest, SignalBatchesAreCoalesced)
+{
+    QtTuneBridge bridge;
+    ASSERT_TRUE(bridge.connectSession("mock://coalesce").isEmpty());
+    spinLoop(1100);   // ~22 frames at 50ms
+
+    // ~11 batches at 10Hz, with generous scheduling slack
+    EXPECT_GT(bridge.signalBatchCount(), 4);
+    EXPECT_LT(bridge.signalBatchCount(), 25);
+    // Bounded ranges, not exact equality — timing contract, not coincidence
+    // (engineering note 2026-10-05, lesson 3)
+
+    // Values actually flowed through the model
+    EXPECT_GT(bridge.signalModel()->rowCount(), 0);
+
+    bridge.disconnectSession();
+}
+
+TEST(BridgeTest, StreamingContinuesPastTenThousandFrames)
+{
+    QtTuneBridge bridge;
+    ASSERT_TRUE(bridge.connectSession("mock://longrun").isEmpty());
+    spinLoop(150);   // let a few frames flow first
+
+    const int before = bridge.frameCount();
+    ASSERT_GT(before, 0);
+
+    // Simulate the old freeze boundary: cumulative count just below 10k.
+    // Under the OLD gate, the next frame would hit >= MaxFrames and
+    // every subsequent frame would be dropped at source, forever.
+    bridge.forceFrameCountForTesting(9999);
+
+    spinLoop(600);   // ~12 more frames at 50ms
+
+    // The stream must still be ALIVE: count advanced past the boundary.
+    // With the in-flight gate, 9999 is just a number nobody consults.
+    EXPECT_GT(bridge.frameCount(), 10000);
+
+    // And no drops occurred — nothing was rejected at the boundary
+    EXPECT_EQ(bridge.droppedFrames(), 0);
+
+    // Liveness, not coincidence: the log model kept receiving rows too
+    EXPECT_GT(bridge.model()->rowCount(), 0);
+
+    bridge.disconnectSession();
+}

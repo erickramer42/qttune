@@ -56,9 +56,10 @@ ApplicationWindow {
                                              : QtTune.connectSession("mock://demo")
             }
             Label {
-                text: qsTr("frames:%1 notify:%2 drop:%3")
+                text: qsTr("frames:%1 notify:%2 batch:%3 drop:%4")
                     .arg(QtTune.frameCount)
                     .arg(QtTune.guiNotifyCount)
+                    .arg(QtTune.signalBatchCount)
                     .arg(QtTune.droppedFrames)
                 color: Theme.textDim
                 visible: QtTune.frameCount > 0
@@ -82,6 +83,7 @@ ApplicationWindow {
                 model: [
                     { label: qsTr("Home"), icon: "" },
                     { label: qsTr("Dashboard"), icon: "" },
+                    { label: qsTr("Live"),   icon: "" },
                     { label: qsTr("Log"),       icon: "" },
                     { label: qsTr("Settings"),  icon: "" }
                 ]
@@ -104,6 +106,7 @@ ApplicationWindow {
             clip: true
             HomePage {}
             DashboardPage {}
+            LiveViewPage {} 
             LogPage {}
             SettingsPage {}
         }
@@ -114,9 +117,24 @@ ApplicationWindow {
         width: parent.width
         currentIndex: stack.currentIndex
         onCurrentIndexChanged: stack.currentIndex = currentIndex
-        TabButton { text: qsTr("Home") }
-        TabButton { text: qsTr("Dash") }
-        TabButton { text: qsTr("Log") }
-        TabButton { text: qsTr("Setup") }
+
+        background: Rectangle { color: Theme.surface }
+
+        // per-button styling since TabBar doesn't propagate backgrounds
+        component ThemedTabButton: TabButton {
+            contentItem: Label {
+                text: parent.text
+                color: parent.checked ? Theme.primary : Theme.textDim
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle { color: Theme.surface }   // selected highlight below
+        }
+
+        ThemedTabButton { text: qsTr("Home") }
+        ThemedTabButton { text: qsTr("Dash") }
+        ThemedTabButton { text: qsTr("Live") }
+        ThemedTabButton { text: qsTr("Log") }
+        ThemedTabButton { text: qsTr("Setup") }
     }
 }

@@ -27,6 +27,7 @@ qt_add_qml_module(qttune
         qml/SettingsPage.qml
         qml/NavButton.qml
         qml/Theme.qml
+        qml/LiveViewPage.qml
 )
 
 target_link_libraries(qttune PRIVATE
