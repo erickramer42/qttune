@@ -15,7 +15,7 @@ extern "C" {
 typedef struct qttune_session qttune_session_t;
 
 /* Frame structure - POD only, no pointers except length */
-typedef struct {
+typedef struct qttune_frame {
     uint64_t timestamp_us;    /* Microseconds since epoch or session start */
     uint32_t channel_id;      /* Logical channel (e.g., CAN bus ID) */
     uint8_t data[64];         /* Max CAN-FD payload size */

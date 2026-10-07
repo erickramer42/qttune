@@ -19,7 +19,7 @@ typedef enum {
     QTTUNE_SIGNAL_TYPE_MANUF_START = 256
 } QttuneSignalType;
 
-typedef struct {
+typedef struct QttuneSignalDef {
     uint16_t id;
     char name[32];
     QttuneSignalType type;
@@ -36,7 +36,7 @@ typedef struct {
 } QttuneSignalDef;
 
 /* Single canonical definition — no duplicates */
-typedef struct {
+typedef struct QttuneSignalSet {
     uint32_t version;
     uint32_t count;
     const QttuneSignalDef* defs;
