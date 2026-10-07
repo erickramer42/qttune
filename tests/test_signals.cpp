@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <qttune/signals.h>
+#include <qttune/signal_sets.h>
 #include <cstring>
 #include <cmath>
 
@@ -148,4 +149,56 @@ TEST_F(SignalDecodeTest, ScaleOffsetCalculation) {
     
     EXPECT_EQ(result, 0);
     EXPECT_NEAR(value, 120.0f, 0.01f); /* 2000 * 0.01 + 100 = 120 */
+}
+
+TEST(SignalsTest, MockSignalSetPassesValidation) {
+    EXPECT_EQ(qttune_validate_signal_set(qttune_mock_signal_set()), 0);
+}
+
+TEST(SignalsTest, MockSetIdsAreUnique) {
+    const QttuneSignalSet* s = qttune_mock_signal_set();
+    for (uint32_t i = 0; i < s->count; ++i)
+        for (uint32_t j = i + 1; j < s->count; ++j)
+            EXPECT_NE(s->defs[i].id, s->defs[j].id)
+                << "duplicate ids at " << i << "," << j;
+}
+
+TEST(SignalsTest, MockSetDecodesReasonably) {
+    /* Integration test: verify mock set definitions decode to plausible ranges */
+    const QttuneSignalSet* set = qttune_mock_signal_set();
+    uint8_t frame[8] = {0xE8, 0x03,  // RPM raw 1000
+                        0x64,       // Coolant raw 100 → 60°C
+                        0x3C,       // Speed raw 60 → 60 km/h
+                        0x80,       // Throttle raw 128 → 50.2%
+                        0x74,       // IAT raw 116 → 76°C
+                        0xCD,       // Load raw 0xCD → 50.2%
+                        0x00};      // padding
+
+    for (uint32_t i = 0; i < set->count; ++i) {
+        float val = 0.0f;
+        int rc = qttune_decode_signal(&set->defs[i], frame, 8, &val);
+        EXPECT_EQ(rc, 0) << "decode failed for " << set->defs[i].name << " at index " << i;
+
+        /* Plausibility checks per signal */
+        switch (set->defs[i].id) {
+        case MOCK_SIG_RPM_ID:
+            EXPECT_GE(val, 0.0f);
+            EXPECT_LE(val, 8000.0f);
+            break;
+        case MOCK_SIG_COOLANT_ID:
+        case MOCK_SIG_IAT_ID:
+            EXPECT_GE(val, -40.0f);
+            EXPECT_LE(val, 215.0f);
+            break;
+        case MOCK_SIG_SPEED_ID:
+            EXPECT_GE(val, 0.0f);
+            EXPECT_LE(val, 255.0f);
+            break;
+        case MOCK_SIG_THROTTLE_ID:
+        case MOCK_SIG_LOAD_ID:
+            EXPECT_GE(val, 0.0f);
+            EXPECT_LE(val, 100.0f);
+            break;
+        }
+    }
 }

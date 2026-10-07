@@ -10,6 +10,8 @@
 extern "C" {
 #include "qttune/core.h"
 #include "qttune/internal.h"
+#include "qttune/signals.h"
+#include "qttune/signal_sets.h"
 }
 
 namespace {
@@ -320,4 +322,77 @@ TEST(CoreTest, SelfUnregisterDuringLiveDispatch) {
 
     /* Quiesce: close joins worker; must not hang under reentry. */
     EXPECT_EQ(qttune_session_close(session), QT_OK);
+}
+
+namespace {
+
+struct MockCapture {
+    static constexpr size_t kMaxFrames = 20;
+    uint8_t payloads[kMaxFrames][8]{};
+    size_t count = 0;
+};
+
+/* Named free function — payload capture needs self-reference-free
+ * simplicity; user_data points at a stack struct, safe because
+ * session_close joins the worker before the stack frame unwinds. */
+void capture_payload_cb(const qttune_frame_t* frame, void* user_data)
+{
+    MockCapture* cap = static_cast<MockCapture*>(user_data);
+    if (cap->count < MockCapture::kMaxFrames) {
+        std::memcpy(cap->payloads[cap->count], frame->data, 8);
+        ++cap->count;
+    }
+}
+
+} // namespace
+
+TEST(CoreTest, MockFramesDecodeAgainstMockSignalSet) {
+    qttune_session_t* session = nullptr;
+    ASSERT_EQ(qttune_session_create("mock://signals", &session), QT_OK);
+
+    MockCapture cap;
+    EXPECT_EQ(qttune_register_frame_callback(
+        session, &capture_payload_cb, &cap), QT_OK);
+
+    EXPECT_EQ(qttune_session_start(session), QT_OK);
+
+    /* 50 ms tick; 20 frames = 1 s, plus margin */
+    std::this_thread::sleep_for(std::chrono::milliseconds(1400));
+
+    /* Close joins the worker; capture struct outlives dispatch safely */
+    EXPECT_EQ(qttune_session_close(session), QT_OK);
+
+    ASSERT_GE(cap.count, size_t{5}) << "expected several frames from mock";
+
+    /* Encoder/decoder round-trip contract: every frame decodes under
+     * every mock definition with physically plausible results. A
+     * byte-order or scale inversion passes structural checks but
+     * produces absurd physics — the range assertions catch that. */
+    const QttuneSignalSet* set = qttune_mock_signal_set();
+    ASSERT_NE(set, nullptr);
+
+    for (size_t f = 0; f < cap.count; ++f) {
+        for (uint32_t i = 0; i < set->count; ++i) {
+            const QttuneSignalDef& def = set->defs[i];
+            float val = 0.0f;
+            ASSERT_EQ(qttune_decode_signal(&def, cap.payloads[f], 8, &val), 0)
+                << "frame " << f << ", signal " << def.name;
+
+            switch (def.id) {
+            case MOCK_SIG_RPM_ID:
+                EXPECT_GE(val, 0.0f);   EXPECT_LT(val, 8000.0f); break;
+            case MOCK_SIG_COOLANT_ID:
+                EXPECT_GE(val, 15.0f);  EXPECT_LE(val, 100.0f); break;
+            case MOCK_SIG_SPEED_ID:
+                EXPECT_GE(val, 0.0f);   EXPECT_LE(val, 100.0f); break;
+            case MOCK_SIG_THROTTLE_ID:
+            case MOCK_SIG_LOAD_ID:
+                EXPECT_GE(val, 0.0f);   EXPECT_LE(val, 100.0f); break;
+            case MOCK_SIG_IAT_ID:
+                EXPECT_GE(val, 15.0f);  EXPECT_LE(val, 60.0f); break;
+            default:
+                FAIL() << "unknown signal id in mock set: " << def.id;
+            }
+        }
+    }
 }
