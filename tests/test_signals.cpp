@@ -204,3 +204,62 @@ TEST(SignalsTest, MockSetDecodesReasonably) {
         }
     }
 }
+
+TEST_F(SignalDecodeTest, DecodeHonorsActualPayloadLength) {
+    /* The mock encoder produces 8-byte payloads, but transports may deliver
+       shorter frames (CAN classic subsets, partial ISO-TP fragments).
+       Signals whose bits live past payload_len must be REJECTED, and
+       signals within it must still decode. Out-value must stay untouched
+       on failure. Pins the contract the bridge now depends on. */
+    const QttuneSignalSet* set = qttune_mock_signal_set();
+    ASSERT_NE(set, nullptr);
+    ASSERT_NE(set->defs, nullptr);
+
+    uint8_t buf[64] = {0};
+    /* Mark bytes we expect decoders to reject - would surface as bogus
+       values if a bounds check regressed */
+    memset(buf + 4, 0xEE, 4);
+
+    for (uint32_t i = 0; i < set->count; ++i) {
+        const QttuneSignalDef& def = set->defs[i];
+        float val = -999.0f;
+        const bool inRange = (def.start_byte + def.num_bytes <= 4);
+
+        if (inRange) {
+            EXPECT_EQ(qttune_decode_signal(&def, buf, 4, &val), 0)
+                << "signal '" << def.name << "' wrongly rejected within payload";
+        } else {
+            /* Bytes at indices >= 4 hold 0xEE - a regression would decode
+               0xEE instead of failing, so out_value is also asserted */
+            EXPECT_EQ(qttune_decode_signal(&def, buf, 4, &val), 2)
+                << "signal '" << def.name << "' decoded beyond payload length";
+            EXPECT_EQ(val, -999.0f)
+                << "out_value written on failure for '" << def.name << "'";
+        }
+    }
+}
+
+TEST_F(SignalDecodeTest, DecodeRejectsNonMultipleOfEightLengths) {
+    /* Off-by-one boundary: a signal starting at byte 4 with 8 bits needs
+       bytes 0-4 inclusive (5 bytes). A 4-byte payload must reject it;
+       a 5-byte payload must accept it. Guards against anyone replacing
+       the last_bit computation with an off-by-one byte-count check. */
+    QttuneSignalDef signal = {};
+    signal.id = 3001;
+    strncpy(signal.name, "Boundary", sizeof(signal.name));
+    signal.type = QTTUNE_SIGNAL_TYPE_UINT8;
+    signal.start_byte = 4;
+    signal.num_bytes = 1;
+    signal.bit_offset = 0;
+    signal.bit_length = 8;
+    signal.scale = 1.0f;
+    signal.offset = 0.0f;
+    strncpy(signal.unit, "u", sizeof(signal.unit));
+
+    uint8_t frame[8] = {0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00};
+    float value = 0.0f;
+
+    EXPECT_EQ(qttune_decode_signal(&signal, frame, 4, &value), 2);
+    EXPECT_EQ(qttune_decode_signal(&signal, frame, 5, &value), 0);
+    EXPECT_NEAR(value, 255.0f, 0.01f);
+}
