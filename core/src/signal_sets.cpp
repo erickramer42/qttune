@@ -2,6 +2,19 @@
 #include <qttune/signal_sets.h>
 #include <string.h>
 
+/* Safe copy into a fixed-width, always-null-terminated char buffer.
+ * Terminates, never overruns, doesn't zero-pad the tail like strncpy
+ * (irrelevant here, but why keep the debate alive). */
+static void copy_str(char* dst, size_t dst_size, const char* src)
+{
+    size_t n = strlen(src);
+    if (n >= dst_size) {
+        n = dst_size - 1;
+    }
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
 static QttuneSignalDef mk(uint16_t id, const char* name,
                           QttuneSignalType type,
                           uint8_t sb, uint8_t nb, uint8_t bo, uint8_t bl,
@@ -18,8 +31,8 @@ static QttuneSignalDef mk(uint16_t id, const char* name,
     d.scale = scale;
     d.offset = offset;
     d.decimal_places = dp;
-    strncpy_s(d.name, sizeof(d.name), name, _TRUNCATE);
-    strncpy_s(d.unit, sizeof(d.unit), unit, _TRUNCATE);
+    copy_str(d.name, sizeof(d.name), name);
+    copy_str(d.unit, sizeof(d.unit), unit);
     return d;
 }
 
