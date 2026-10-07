@@ -3,6 +3,9 @@
 > ⚠️ **WARNING:** This software may permanently damage your vehicle.  
 > See [DISCLAIMER.md](DISCLAIMER.md) for full terms before use.
 
+[![CI](https://github.com/erickramer42/qttune/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/qttune/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/erickramer42/qttune/badge.svg)](https://api.securityscorecards.dev/projects/github.com/erickramer42/qttune)
+
 Cross-platform ECU reader/logger, evolving into a full tuning application.
 Qt/QML frontend with a shared codebase targeting desktop (Windows, Linux,
 macOS) and mobile (Android, iOS); desktop builds are validated, mobile
@@ -75,7 +78,6 @@ on a device/emulator.
 | v0.4.0  | Security access discovery, flash capability | Planned |
 | v0.5.0+ | Multi-manufacturer plugins | Future |
 
-[![CI](https://github.com/erickramer42/qttune/actions/workflows/ci.yml/badge.svg)](https://github.com/erickramer42/qttune/actions/workflows/ci.yml)
 
 Currently 37 automated tests (18 core, 13 signals, 6 bridge), all green
 locally on Windows/MSVC 2022 and on CI (3-platform matrix). Per-case ctest
