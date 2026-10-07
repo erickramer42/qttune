@@ -127,6 +127,8 @@ TEST_F(SignalDecodeTest, ValidateSignal_UnterminatedName) {
     signal.num_bytes = 1;
     signal.bit_length = 8;
     /* Fill ALL 32 bytes with non-null chars — no room for terminator */
+    /* Intentional: tests validator's handling of unterminated strings */
+    /* Code scanning may flag, do not fix */
     memset(signal.name, 'A', sizeof(signal.name));
     
     EXPECT_EQ(qttune_validate_signal(&signal), 6);
